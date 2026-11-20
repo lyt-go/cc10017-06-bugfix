@@ -41,6 +41,24 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/manifests")
+def list_manifests(rule_id: int | None = Query(default=None, description="按规则过滤")) -> dict:
+    """演进回滚清单列表：停止边界、恢复字段与异常消息同时可见；必须声明在 /{entry_id} 之前。"""
+    items = service.list_manifests(rule_id=rule_id)
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/manifests/recover")
+def recover_manifests() -> ActionResult:
+    """回滚中断恢复：隔离半成品清单，每个规则只保留最后一份完整清单。"""
+    result = service.recover_interrupted()
+    return ActionResult(
+        ok=True,
+        message=f"已隔离 {len(result['quarantined'])} 份中断清单，生效清单 {len(result['active_manifests'])} 份",
+        entry={"quarantined": result["quarantined"], "active_manifests": result["active_manifests"]},
+    )
+
+
 @router.get("/export")
 def export_entries(
     request: Request,
@@ -72,6 +90,13 @@ def get_entry(entry_id: int) -> dict:
     if entry is None:
         raise HTTPException(status_code=404, detail=f"演进规则 {entry_id} 不存在或已归档")
     return entry
+
+
+@router.get("/{entry_id}/manifest")
+def get_rule_manifest(entry_id: int) -> dict:
+    """单条规则名下的演进回滚清单，含历史版本与中断记录。"""
+    items = service.list_manifests(rule_id=entry_id)
+    return {"items": items, "total": len(items)}
 
 
 @router.post("", response_model=ActionResult)

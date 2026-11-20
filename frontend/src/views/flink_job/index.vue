@@ -24,7 +24,32 @@
     </div>
     <div v-if="selectedItem" class="timeline-log" data-testid="timeline-log">
       <strong>{{ selectedItem.name || selectedItem.label }}</strong> — 状态：{{ selectedItem.status }}
-      <div style="margin-top:4px;">{{ selectedItem.logs || '暂无日志' }}</div>
+      <div style="margin-top:4px;white-space:pre-line;">{{ selectedItem.logs || '暂无日志' }}</div>
+      <div v-if="selectedItem.rollback" class="rollback-info" data-testid="rollback-info">
+        回滚清单 {{ selectedItem.rollback.manifest_id }}：停止位置 offset={{ selectedItem.rollback.stop_offset }}；
+        恢复字段：{{ (selectedItem.rollback.recovery_fields || []).join('、') || '无' }}；
+        异常消息：{{ selectedItem.rollback.exception || '无' }}
+      </div>
+    </div>
+    <div class="manifest-panel" data-testid="flink-manifest-panel">
+      <h3>已交付的演进回滚清单</h3>
+      <table class="data-table">
+        <thead>
+          <tr><th>清单编号</th><th>规则编号</th><th>关联主题</th><th>版本</th><th>停止边界</th><th>恢复字段</th><th>状态</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="m in manifests" :key="String(m.manifest_id)" :data-testid="`manifest-${m.manifest_id}`">
+            <td>{{ m.manifest_id }}</td>
+            <td>{{ m.rule_code }}</td>
+            <td>{{ m.topic_code }}</td>
+            <td>v{{ m.version }}</td>
+            <td>{{ m.recovery_point ? `offset=${m.recovery_point.offset}` : '—' }}</td>
+            <td>{{ (m.recovery_fields || []).join('、') || '—' }}</td>
+            <td>{{ m.status }}</td>
+          </tr>
+          <tr v-if="!manifests.length"><td colspan="7" class="empty-state">暂无交付的演进回滚清单</td></tr>
+        </tbody>
+      </table>
     </div>
     <div v-if="showCreate" class="modal-backdrop" data-testid="create-modal">
       <form class="modal" @submit.prevent="submitCreate"><h3>登记流式任务</h3>
@@ -45,6 +70,7 @@ const columns = ["任务编号", "消费主题", "转换逻辑", "输出表名",
 const actions = ["提交校验", "启动作业", "停止作业"]
 const timelineItems = ref<any[]>([])
 const selectedItem = ref<any>(null)
+const manifests = ref<any[]>([])
 const dateFrom = ref(''); const dateTo = ref('')
 const errorMessage = ref(''); const showCreate = ref(false)
 const createValues = ref<Record<string,string>>({})
@@ -53,7 +79,10 @@ function barLeft(item: any) { const all = allItems.value.filter(i => i.start && 
 function barWidth(item: any) { const all = allItems.value.filter(i => i.start && i.end); if(!all.length) return 20; const min = Math.min(...all.map(i => new Date(i.start).getTime())); const max = Math.max(...all.map(i => new Date(i.end).getTime())); const range = max - min || 86400000; return Math.max(5, ((new Date(item.end).getTime() - new Date(item.start).getTime()) / range) * 100) }
 function selectItem(item: any) { selectedItem.value = selectedItem.value?.id === item.id ? null : item }
 async function reload() {
-  try { const res = await request(ENDPOINT); const data = await res.json(); allItems.value = data.items || []; applyFilter() } catch(e) { errorMessage.value = '加载失败' }
+  try {
+    const res = await request(ENDPOINT); const data = await res.json(); allItems.value = data.items || []; applyFilter()
+    const mRes = await request(`${ENDPOINT}/rollback_manifests`); const mData = await mRes.json(); manifests.value = mData.items || []
+  } catch(e) { errorMessage.value = '加载失败' }
 }
 function applyFilter() {
   let items = allItems.value

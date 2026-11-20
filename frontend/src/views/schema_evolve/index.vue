@@ -8,6 +8,7 @@
       <div class="page-actions">
         <button class="btn primary" data-testid="open-create" type="button" @click="openCreate">登记演进规则</button>
         <button class="btn" data-testid="export" type="button" @click="exportRows">导出Schema演进清单</button>
+        <button class="btn" data-testid="recover-manifests" type="button" @click="recoverManifests">恢复中断清单</button>
       </div>
     </header>
 
@@ -72,8 +73,45 @@
       </form>
     </div>
 
+    <section class="manifest-panel" data-testid="manifest-panel">
+      <h3>演进回滚清单</h3>
+      <p class="page-desc">回滚生成清单后先冻结依赖任务再恢复字段；停止边界、恢复字段与异常消息在这里同时可见。</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>清单编号</th>
+            <th>规则编号</th>
+            <th>关联主题</th>
+            <th>版本</th>
+            <th>停止边界</th>
+            <th>恢复字段</th>
+            <th>异常消息</th>
+            <th>状态</th>
+            <th>更新时间</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="m in manifests" :key="String(m.manifest_id)" :data-testid="`manifest-${m.manifest_id}`">
+            <td>{{ m.manifest_id }}</td>
+            <td>{{ m.rule_code }}</td>
+            <td>{{ m.topic_code }}</td>
+            <td>v{{ m.version }}</td>
+            <td>{{ stopBoundaryText(m) }}</td>
+            <td>{{ (m.recovery_fields || []).join('、') || '—' }}</td>
+            <td>{{ m.exception_message || '—' }}</td>
+            <td>{{ m.status }}</td>
+            <td>{{ m.updated_at }}</td>
+          </tr>
+          <tr v-if="!manifests.length">
+            <td colspan="9" class="empty-state">暂无演进回滚清单，执行回滚后在此可见</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
     <footer class="page-foot">
       <span>共 {{ total }} 条Schema演进记录</span>
+      <span v-if="noticeMessage" class="notice-text" data-testid="notice">{{ noticeMessage }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -95,6 +133,8 @@ const metricNames = ["演进规则总数", "待校验规则", "已生效规则"]
 const rows = ref<Row[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const noticeMessage = ref('')
+const manifests = ref<any[]>([])
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
 const showCreate = ref(false)
@@ -154,17 +194,53 @@ async function submitCreate() {
 
 async function runAction(action: string, row: Row) {
   errorMessage.value = ''
+  noticeMessage.value = ''
   try {
     const response = await request(`${ENDPOINT}/${row.id}/actions`, {
       method: 'POST',
       body: JSON.stringify({ action }),
     })
-    if (!response.ok) {
-      throw new Error('Schema演进动作未生效，请稍后重试')
+    const payload = await response.json()
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.message || 'Schema演进动作未生效，请稍后重试')
     }
+    noticeMessage.value = payload.message || `演进规则已${action}`
     await reload()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Schema演进操作失败'
+  }
+}
+
+function stopBoundaryText(manifest: any) {
+  const point = manifest.recovery_point
+  if (!point) return '—'
+  const jobs = (manifest.stop_boundary?.jobs ?? []).map((job: any) => job.job_code).filter(Boolean)
+  const suffix = jobs.length ? `（${jobs.join('、')}）` : ''
+  return `offset=${point.offset}${suffix}`
+}
+
+async function loadManifests() {
+  try {
+    const response = await request(`${ENDPOINT}/manifests`)
+    if (!response.ok) throw new Error('演进回滚清单读取失败')
+    const payload = await response.json()
+    manifests.value = payload.items ?? []
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '演进回滚清单读取失败'
+  }
+}
+
+async function recoverManifests() {
+  errorMessage.value = ''
+  noticeMessage.value = ''
+  try {
+    const response = await request(`${ENDPOINT}/manifests/recover`, { method: 'POST' })
+    const payload = await response.json()
+    if (!response.ok || payload.ok === false) throw new Error(payload.message || '中断清单恢复失败')
+    noticeMessage.value = payload.message || '中断清单已恢复'
+    await loadManifests()
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '中断清单恢复失败'
   }
 }
 
@@ -179,6 +255,7 @@ async function reload() {
     const payload = await response.json()
     rows.value = payload.items ?? []
     total.value = payload.total ?? rows.value.length
+    await loadManifests()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : 'Schema演进列表读取失败'
   }

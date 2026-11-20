@@ -35,7 +35,7 @@ SEED_ROWS: dict[str, list[dict[str, Any]]] = {
     "schema_evolve": [
         {"id": 1, "status": "已生效", "pending": False, "abnormal": False,
          "规则编号": "SCHE-0001", "关联主题": "TOPI-0001", "新增字段": "shipping_address",
-         "删除字段": "-", "类型变更": "amount:decimal(18,4)", "默认值填充": "shipping_address=''",
+         "删除字段": "coupon_code", "类型变更": "amount:decimal(18,4)", "默认值填充": "shipping_address=''",
          "兼容模式": "FORWARD", "生效版本": "v3"},
         {"id": 2, "status": "已生效", "pending": False, "abnormal": False,
          "规则编号": "SCHE-0002", "关联主题": "TOPI-0002", "新增字段": "device_type",

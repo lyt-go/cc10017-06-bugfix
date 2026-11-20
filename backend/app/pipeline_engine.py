@@ -586,6 +586,7 @@ class PipelineEngine:
             "compact_results": len(store.rows("compact_results")),
             "ttl_applied_log": len(store.rows("ttl_applied_log")),
             "realtime_metric_results": len(store.rows("realtime_metric_results")),
+            "schema_rollback_manifests": len(store.rows("schema_rollback_manifests")),
         }
 
         return {

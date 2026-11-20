@@ -30,6 +30,13 @@ def list_entries() -> dict[str, Any]:
     return {"items": items}
 
 
+@router.get("/rollback_manifests")
+def list_rollback_manifests() -> dict[str, Any]:
+    """流式计算模块接收到的演进回滚清单（保留当前版本）；必须声明在 /{entry_id} 之前。"""
+    items = service.get_rollback_manifests()
+    return {"items": items, "total": len(items)}
+
+
 @router.get("/export")
 def export_entries() -> StreamingResponse:
     items = service.get_timeline()
